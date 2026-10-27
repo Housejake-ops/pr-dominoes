@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Puerto Rican Dominoes</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --accent:#e11d48; --text:#e2e8f0; --muted:#94a3b8; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+    header { padding:1rem 1.5rem; background:var(--card); border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:1.25rem; } header h1 span { color:var(--accent); }
+    .controls { display:flex; gap:0.75rem; align-items:center; }
+    button,select { background:#334155; color:var(--text); border:1px solid #475569; border-radius:6px; padding:0.4rem 0.75rem; }
+    button.primary { background:var(--accent); color:#fff; border:none; font-weight:600; cursor:pointer; }
+    main { display:grid; grid-template-columns:260px 1fr 240px; gap:1rem; padding:1rem; height:calc(100vh - 70px); }
+    .panel { background:var(--card); border-radius:10px; padding:1rem; overflow:auto; }
+    .table-wrapper { position:relative; width:min(860px,100%); aspect-ratio:1; margin:0 auto;
+      background:repeating-linear-gradient(90deg,#6b4423 0px,#7a4e2a 3px,#5c3a1e 6px);
+      border-radius:16px; padding:52px; border:4px solid #3d2814;
+      box-shadow:0 12px 32px rgba(0,0,0,0.6); }
+    .rail { position:absolute; background:linear-gradient(180deg,#8b5a2b,#4a2e15); }
+    .rail.top,.rail.bottom { left:50px; right:50px; height:26px; }
+    .rail.top { top:6px; } .rail.bottom { bottom:6px; }
+    .rail.left,.rail.right { top:50px; bottom:50px; width:26px; }
+    .rail.left { left:6px; } .rail.right { right:6px; }
+    .cup { position:absolute; width:32px; height:32px; border-radius:50%;
+      background:radial-gradient(circle at 35% 30%,#fff,#888); border:3px solid #2a1a0a; }
+    .cup.tl { top:8px; left:8px; } .cup.tr { top:8px; right:8px; }
+    .cup.bl { bottom:8px; left:8px; } .cup.br { bottom:8px; right:8px; }
+    #board {
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(ellipse at center, #1a4a2a, #0d2818);
+      border-radius: 8px;
+      border: 4px solid #2a1a0a;
+      padding: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .tile {
+      width: 34px;
+      height: 68px;
+      background: linear-gradient(145deg, #fffef8, #f5f0e1);
+      border-radius: 4px;
+      border: 1px solid #d4cbb8;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    .hand .tile { position: relative; }
+    #board .tile { position: absolute; }
+    .tile.horizontal {
+      width: 68px;
+      height: 34px;
+      flex-direction: row;
+    }
+    .tile::after {
+      content: "";
+      position: absolute;
+      left: 10%;
+      right: 10%;
+      top: 50%;
+      height: 1px;
+      background: #222;
+    }
+    .tile.horizontal::after {
+      left: 50%;
+      right: auto;
+      top: 10%;
+      bottom: 10%;
+      width: 1px;
+      height: auto;
+    }
+    .pip { width: 5px; height: 5px; background: #111; border-radius: 50%; }
+    .tile.selected { outline: 2px solid #38bdf8; }
+    .tile.playable { box-shadow: 0 0 0 2px #22c55e; }
+    .hand { background:var(--card); border-radius:10px; padding:0.75rem; min-height:120px; display:flex; flex-wrap:wrap; gap:6px; }
+    .status { font-size:0.9rem; color:var(--muted); margin-bottom:0.5rem; }
+    .score { font-size:1.1rem; margin:0.4rem 0; } .score strong { color:var(--accent); }
+    .log { font-size:0.8rem; color:var(--muted); max-height:240px; overflow:auto; }
+    .log div { margin:0.15rem 0; }
+    .last-play { position:absolute; top:12px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,0.8); color:#fff; padding:4px 10px; border-radius:6px; font-size:0.8rem; z-index:10; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Dominoes <span>PR</span></h1>
+    <div class="controls">
+      <span style="font-size:0.9rem;color:#94a3b8">Target 500</span>
+      <button id="newGame" class="primary">New Game</button>
+      <button id="newRound">New Round</button>
+      <button id="reset">Reset Hand</button>
+      <button id="playSelected" class="primary">Play Selected</button>
+      <button id="pass">Pass</button>
+    </div>
+  </header>
+  <main>
+    <aside class="panel">
+      <h3>Teams</h3>
+      <div class="score">You + Partner: <strong id="scoreA">0</strong></div>
+      <div class="score">Opponents: <strong id="scoreB">0</strong></div>
+      <div class="score">Round: <strong id="roundNum">1</strong></div>
+      <div id="playerList" style="font-size:0.85rem;margin-top:0.5rem"></div>
+      <hr style="border-color:#334155;margin:1rem 0">
+      <h4>Bonuses</h4>
+      <label><input type="checkbox" id="capicu" checked> Capicú +100</label><br>
+      <label><input type="checkbox" id="chuchazo" checked> Chuchazo +100</label>
+      <p style="font-size:0.8rem;color:#94a3b8">Hands 1-4: premium + remaining + Capicú/Chuchazo<br>After: remaining + bonuses<br>Locked: same rules</p>
+      <hr style="border-color:#334155;margin:1rem 0">
+      <h4>History</h4>
+      <div class="log" id="history"></div>
+    </aside>
+    <section>
+      <div class="status" id="boardStatus">Table</div>
+      <div class="table-wrapper">
+        <div class="rail top"></div><div class="rail bottom"></div>
+        <div class="rail left"></div><div class="rail right"></div>
+        <div class="cup tl"></div><div class="cup tr"></div>
+        <div class="cup bl"></div><div class="cup br"></div>
+        <div id="lastPlay" class="last-play" style="display:none"></div>
+        <div id="board"></div>
+      </div>
+      <div style="margin-top:1rem">
+        <div class="status">Queue — drag onto board</div>
+        <div class="hand" id="queue" style="min-height:70px;background:#1a2332;"></div>
+      </div>
+      <div style="margin-top:0.5rem">
+        <div class="status">Your Hand</div>
+        <div class="hand" id="playerHand"></div>
+      </div>
+    </section>
+    <aside class="panel">
+      <h3>Others</h3>
+      <div id="others" style="font-size:0.85rem"></div>
+      <hr style="border-color:#334155;margin:1rem 0">
+      <h4>Log</h4>
+      <div class="log" id="log"></div>
+    </aside>
+  </main>
+  <script>
+    const names = ['You','AI-Right','Partner','AI-Left'];
+    let hands = [[],[],[],[]];
+    let queue = [];
+    let board = [];
+    let leftEnd = null, rightEnd = null;
+    let current = 0;
+    let scores = {A:0, B:0};
+    let round = 1;
+    let selected = null;
+    let lastWinner = null;
+    let over = false;
+    const target = 500;
+    const $ = id => document.getElementById(id);
+
+    function genTiles() {
+      const s = [];
+      for (let a=0; a<=6; a++) for (let b=a; b<=6; b++) s.push({a,b,id:a+'-'+b, double:a===b});
+      return s;
+    }
+    function shuffle(a) {
+      for (let i=a.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+      return a;
+    }
+    function log(m) { const d=document.createElement('div'); d.textContent=m; $('log').prepend(d); }
+    function hist(m) { const d=document.createElement('div'); d.textContent=m; $('history').prepend(d); }
+
+    function pips(n) {
+      const w = document.createElement('div');
+      w.className = 'half';
+      w.style.display = 'grid';
+      w.style.gridTemplateColumns = '1fr 1fr 1fr';
+      w.style.gridTemplateRows = '1fr 1fr 1fr';
+      w.style.placeItems = 'center';
+      w.style.width = '100%';
+      w.style.height = '100%';
+
+      // Classic layouts (0-indexed positions in 3x3)
+      const layouts = {
+        0: [],
+        1: [4],
+        2: [0, 8],
+        3: [0, 4, 8],
+        4: [0, 2, 6, 8],
+        5: [0, 2, 4, 6, 8],   // corners + center
+        6: [0, 2, 3, 5, 6, 8]
+      };
+      const spots = layouts[n] || [];
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('div');
+        cell.style.width = '100%';
+        cell.style.height = '100%';
+        cell.style.display = 'flex';
+        cell.style.alignItems = 'center';
+        cell.style.justifyContent = 'center';
+        if (spots.includes(i)) {
+          const p = document.createElement('span');
+          p.className = 'pip';
+          cell.appendChild(p);
+        }
+        w.appendChild(cell);
+      }
+      return w;
+    }
+    function makeTile(t, horiz=false, flip=false) {
+      const d = document.createElement('div');
+      d.className = 'tile' + (horiz ? ' horizontal' : '');
+      const top = flip ? t.b : t.a;
+      const bot = flip ? t.a : t.b;
+      d.append(pips(top), pips(bot));
+      return d;
+    }
+
+    function updateEnds() {
+      if (!board.length) {
+        leftEnd = null;
+        rightEnd = null;
+        return;
+      }
+      // Recalculate from the chain order
+      leftEnd = board[0].tile.a;
+      rightEnd = board[0].tile.b;
+      for (let i = 1; i < board.length; i++) {
+        const t = board[i].tile;
+        if (t.a === rightEnd || t.b === rightEnd) {
+          rightEnd = (t.a === rightEnd) ? t.b : t.a;
+        } else if (t.a === leftEnd || t.b === leftEnd) {
+          leftEnd = (t.a === leftEnd) ? t.b : t.a;
+        }
+      }
+    }
+
+    function canPlay(t) {
+      if (!board.length && !queue.length) return true;
+      if (leftEnd === null || rightEnd === null) return true;
+      return t.a === leftEnd || t.b === leftEnd || t.a === rightEnd || t.b === rightEnd;
+    }
+
+    function play(player, tile) {
+      if (!canPlay(tile)) return false;
+      const pos = { tile, flip: false, x: 200, y: 140, rot: tile.double ? 90 : 0 };
+      if (!board.length && !queue.length) {
+        leftEnd = tile.a;
+        rightEnd = tile.b;
+      } else {
+        const matchRight = rightEnd !== null && (tile.a === rightEnd || tile.b === rightEnd);
+        const matchLeft = leftEnd !== null && (tile.a === leftEnd || tile.b === leftEnd);
+        if (matchRight && !matchLeft) {
+          pos.flip = (tile.a !== rightEnd);
+          rightEnd = pos.flip ? tile.a : tile.b;
+        } else if (matchLeft && !matchRight) {
+          pos.flip = (tile.b !== leftEnd);
+          leftEnd = pos.flip ? tile.b : tile.a;
+        } else if (matchRight) {
+          // Matches both — prefer right
+          pos.flip = (tile.a !== rightEnd);
+          rightEnd = pos.flip ? tile.a : tile.b;
+        } else {
+          return false;
+        }
+      }
+      queue.push(pos);
+      hands[player] = hands[player].filter(t => t.id !== tile.id);
+      return true;
+    }
+
+    function playerPlay() {
+      if (current !== 0 || over || !selected) { log('Select a tile first'); return; }
+      if (!canPlay(selected)) { log('Does not match'); return; }
+      const t = selected;
+      play(0, t);
+      selected = null;
+      log('Added to queue — drag onto the board');
+      render();
+    }
+
+    function showLast(who, t) {
+      const el = $('lastPlay');
+      el.textContent = who + ' played [' + t.a + '|' + t.b + ']';
+      el.style.display = 'block';
+      setTimeout(() => el.style.display='none', 1600);
+    }
+
+    function render() {
+      const ph = $('playerHand'); ph.innerHTML='';
+      hands[0].forEach(t => {
+        const el = makeTile(t);
+        el.style.cursor = 'grab';
+        if (selected && selected.id === t.id) el.classList.add('selected');
+        if (current === 0 && canPlay(t)) el.classList.add('playable');
+
+        el.onmousedown = (e) => {
+          if (current !== 0 || over || !canPlay(t)) return;
+          e.preventDefault();
+          const ghost = el.cloneNode(true);
+          ghost.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;opacity:0.85;';
+          document.body.appendChild(ghost);
+          const mv = (ev) => { ghost.style.left = (ev.clientX-17)+'px'; ghost.style.top = (ev.clientY-34)+'px'; };
+          const up = (ev) => {
+            document.removeEventListener('mousemove', mv);
+            document.removeEventListener('mouseup', up);
+            ghost.remove();
+            const r = $('board').getBoundingClientRect();
+            if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
+              if (play(0, t)) {
+                // Move from queue straight to board at drop point
+                const placed = queue.pop();
+                if (placed) {
+                  placed.x = ev.clientX - r.left - 17;
+                  placed.y = ev.clientY - r.top - 34;
+                  if (t.double) placed.rot = 90;
+                  board.push(placed);
+                }
+                selected = null;
+                passStreak = 0;
+                log('You played [' + t.a + '|' + t.b + '] — ends now ' + leftEnd + '|' + rightEnd);
+                showLast('You', t);
+                render();
+                setTimeout(() => { if (!check()) next(); }, 50);
+              }
+            }
+          };
+          document.addEventListener('mousemove', mv);
+          document.addEventListener('mouseup', up);
+          mv(e);
+        };
+        ph.appendChild(el);
+      });
+
+      // Queue
+      const qEl = $('queue');
+      if (qEl) {
+        qEl.innerHTML = '';
+        queue.forEach((item, idx) => {
+          const el = makeTile(item.tile, false, item.flip);
+          el.style.cursor = 'grab';
+          el.onmousedown = (e) => {
+            e.preventDefault();
+            const ghost = el.cloneNode(true);
+            ghost.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;opacity:0.85;';
+            document.body.appendChild(ghost);
+            const mv = (ev) => { ghost.style.left = (ev.clientX-17)+'px'; ghost.style.top = (ev.clientY-34)+'px'; };
+            const up = (ev) => {
+              document.removeEventListener('mousemove', mv);
+              document.removeEventListener('mouseup', up);
+              ghost.remove();
+              const r = $('board').getBoundingClientRect();
+              if (ev.clientX>=r.left && ev.clientX<=r.right && ev.clientY>=r.top && ev.clientY<=r.bottom) {
+                item.x = ev.clientX - r.left - 17;
+                item.y = ev.clientY - r.top - 34;
+                if (item.tile.double && !item.rot) item.rot = 90;
+                board.push(item);
+                const qi = queue.indexOf(item);
+                if (qi >= 0) queue.splice(qi, 1);
+                passStreak = 0;
+                log('Placed — ends ' + leftEnd + '|' + rightEnd);
+                if (item.tile) showLast('You', item.tile);
+                render();
+                setTimeout(() => { if (!check()) next(); }, 50);
+              }
+            };
+            document.addEventListener('mousemove', mv);
+            document.addEventListener('mouseup', up);
+            mv(e);
+          };
+          qEl.appendChild(el);
+        });
+      }
+
+      // Board tiles
+      const b = $('board');
+      b.innerHTML = '';
+      board.forEach((p, i) => {
+        if (p.rot === undefined) p.rot = 0;
+        const el = makeTile(p.tile, false, p.flip);
+        el.style.position = 'absolute';
+        el.style.left = (p.x || 40) + 'px';
+        el.style.top = (p.y || 40) + 'px';
+        el.style.transform = `rotate(${p.rot || 0}deg)`;
+        el.style.cursor = 'move';
+        const rot = document.createElement('div');
+        rot.textContent = '↻';
+        rot.style.cssText = 'position:absolute;top:-8px;right:-8px;width:14px;height:14px;background:#e11d48;color:#fff;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;';
+        rot.onclick = (e) => { e.stopPropagation(); p.rot = ((p.rot||0)+90)%360; render(); };
+        el.appendChild(rot);
+        el.onmousedown = (e) => {
+          if (e.target === rot) return;
+          e.preventDefault();
+          const sx = e.clientX - (p.x||0), sy = e.clientY - (p.y||0);
+          const mv = (ev) => { p.x = ev.clientX-sx; p.y = ev.clientY-sy; el.style.left=p.x+'px'; el.style.top=p.y+'px'; };
+          const up = () => { document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); };
+          document.addEventListener('mousemove',mv);
+          document.addEventListener('mouseup',up);
+        };
+        b.appendChild(el);
+      });
+
+      // Hint for AI tile in queue
+      if (queue.length && !over && b) {
+        try {
+          const hint = document.createElement('div');
+          hint.style.cssText = 'position:absolute;width:44px;height:44px;border:3px dashed #facc15;border-radius:8px;pointer-events:none;z-index:4;';
+          if (board.length) {
+            const last = board[board.length - 1];
+            hint.style.left = ((last.x || 100) + 60) + 'px';
+            hint.style.top = (last.y || 100) + 'px';
+          } else {
+            hint.style.left = '260px';
+            hint.style.top = '140px';
+          }
+          b.appendChild(hint);
+        } catch (e) {}
+      }
+      $('scoreA').textContent = scores.A;
+      $('scoreB').textContent = scores.B;
+      $('roundNum').textContent = round;
+      $('boardStatus').textContent = board.length 
+        ? `Chain: ${board.length} tiles — ends [${leftEnd}|${rightEnd}]` 
+        : 'Waiting for 6-6';
+      $('playerList').innerHTML = hands.map((h,i) =>
+        `<div>${names[i]} ${current===i?'←':''}: ${h.length}</div>`).join('');
+      $('others').innerHTML = [1,2,3].map(i => `<div>${names[i]}: ${hands[i].length} tiles</div>`).join('');
+    }
+
+    function handSum(h) { return h.reduce((s,t)=>s+t.a+t.b,0); }
+
+    function endRound(winner, tile, player) {
+      over = true;
+      let pts = 0, msg = '';
+      const prem = [100, 75, 50, 25];
+      const remaining = [0,1,2,3].filter(p => p !== player && hands[p]).reduce((s, p) => s + handSum(hands[p]), 0);
+
+      if (round <= 4) {
+        pts = prem[round - 1] + remaining;
+        msg = `Team ${winner} +${prem[round-1]} premium + ${remaining} remaining`;
+      } else {
+        pts = remaining;
+        msg = `Team ${winner} +${remaining} remaining`;
+      }
+
+      const capicuEl = $('capicu');
+      const chuchazoEl = $('chuchazo');
+      if (tile && capicuEl && capicuEl.checked && board.length > 1 && leftEnd !== null && rightEnd !== null) {
+        if ((tile.a === leftEnd || tile.b === leftEnd) && (tile.a === rightEnd || tile.b === rightEnd)) {
+          pts += 100;
+          msg += ' +100 Capicú';
+        }
+      }
+      if (tile && chuchazoEl && chuchazoEl.checked && tile.a === 0 && tile.b === 0) {
+        pts += 100;
+        msg += ' +100 Chuchazo';
+      }
+
+      if (winner && scores[winner] !== undefined) scores[winner] += pts;
+      if (player !== undefined && player !== null) lastWinner = player;
+      log(msg + ` = ${pts} total`);
+      hist(`R${round}: ${msg} (${scores.A}-${scores.B})`);
+      if (scores.A >= target || scores.B >= target) {
+        log('Game over! Click New Game to start over.');
+      }
+      render();
+    }
+
+    function check() {
+      for (let p = 0; p < 4; p++) {
+        if (hands[p] && hands[p].length === 0) {
+          const lastTile = board.length ? board[board.length - 1].tile : null;
+          endRound(p % 2 === 0 ? 'A' : 'B', lastTile, p);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    let passStreak = 0;
+
+    function isLocked() {
+      return [0,1,2,3].every(p => !hands[p].some(canPlay));
+    }
+
+    function next() {
+      current = (current + 1) % 4; // clockwise: You → AI-Right → Partner → AI-Left
+      if (check()) return;
+      if (isLocked()) {
+        passStreak = 4;
+      }
+      if (passStreak >= 4 || isLocked()) {
+        log('Board locked — no one can play.');
+        let minPts = Infinity, winnerPlayer = 0;
+        for (let p = 0; p < 4; p++) {
+          const pts = handSum(hands[p]);
+          if (pts < minPts) { minPts = pts; winnerPlayer = p; }
+        }
+        const winner = winnerPlayer % 2 === 0 ? 'A' : 'B';
+        const remaining = [0,1,2,3].filter(p => p !== winnerPlayer).reduce((s, p) => s + handSum(hands[p]), 0);
+        const prem = [100, 75, 50, 25];
+        let pts = (round <= 4 ? prem[round - 1] : 0) + remaining;
+        let msg = `Locked. ${names[winnerPlayer]} fewest (${minPts}). `;
+        if (round <= 4) msg += `+${prem[round-1]} premium + ${remaining} remaining`;
+        else msg += `+${remaining} remaining`;
+        scores[winner] += pts;
+        lastWinner = winnerPlayer;
+        log(msg + ` = ${pts}`);
+        hist(`R${round}: ${msg} (${scores.A}-${scores.B})`);
+        over = true;
+        if (scores.A >= target || scores.B >= target) log('Game over! Click New Game.');
+        render();
+        return;
+      }
+      log('Next: ' + names[current]);
+      render();
+      if (current !== 0 && !over) setTimeout(ai, 700);
+    }
+
+    function ai() {
+      if (over || current === 0) return;
+      const hand = hands[current];
+      const playable = hand.filter(canPlay);
+      if (!playable.length) {
+        passStreak++;
+        log(names[current] + ' passed');
+        setTimeout(next, 400);
+        return;
+      }
+      passStreak = 0;
+
+      const partner = (current + 2) % 4;
+      const partnerTiles = hands[partner].length;
+      const opp1 = (current + 1) % 4;
+      const opp2 = (current + 3) % 4;
+      const oppTiles = hands[opp1].length + hands[opp2].length;
+      const myTiles = hand.length;
+
+      // Score each playable tile
+      const scored = playable.map(t => {
+        let score = t.a + t.b;
+        if (t.double) score += 15;
+
+        // Prefer keeping options if we have many tiles
+        const after = hand.filter(x => x.id !== t.id);
+        const stillPlayable = after.filter(canPlay).length;
+        if (myTiles > 3) score += stillPlayable * 3;
+
+        // Help partner if they are low
+        if (partnerTiles <= 2) score += 8;
+
+        // Block if opponents are low
+        if (oppTiles <= 3) {
+          // Prefer doubles or tiles that might close an end
+          if (t.double) score += 12;
+        }
+
+        // Slight preference for higher tiles early
+        if (myTiles >= 5) score += (t.a + t.b) * 0.5;
+
+        return { tile: t, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      const best = scored[0];
+      if (!best) return;
+      const t = best.tile;
+
+      if (t && play(current, t)) {
+        log(names[current] + ' played [' + t.a + '|' + t.b + '] (ends are ' + leftEnd + '|' + rightEnd + ')');
+        showLast(names[current], t);
+        render();
+      }
+    }
+
+    function newRound() {
+      if (over) round++;   // advance only after a hand has finished
+      const all = shuffle(genTiles());
+      hands = [all.splice(0,7), all.splice(0,7), all.splice(0,7), all.splice(0,7)];
+      board = []; queue = []; leftEnd = null; rightEnd = null;
+      selected = null; over = false; passStreak = 0;
+      let starter = 0;
+      if (lastWinner !== null) {
+        starter = lastWinner;
+        log('Winner of last hand starts.');
+      } else {
+        for (let p=0; p<4; p++) if (hands[p].some(t=>t.a===6&&t.b===6)) starter = p;
+        log(names[starter] + ' has the 6-6.');
+      }
+      current = starter;
+      log('Starting round ' + round + '. ' + names[starter] + ' has the 6-6.');
+      render();
+      if (starter !== 0) {
+        setTimeout(() => {
+          let openTile;
+          if (lastWinner !== null) {
+            openTile = hands[starter][0];
+          } else {
+            openTile = hands[starter].find(t=>t.a===6&&t.b===6);
+          }
+          if (openTile) {
+            leftEnd = openTile.a;
+            rightEnd = openTile.b;
+            play(starter, openTile);
+            log(names[starter] + ' opened [' + openTile.a + '|' + openTile.b + '] — ends ' + leftEnd + '|' + rightEnd);
+            showLast(names[starter], openTile);
+            render();
+          }
+        }, 500);
+      } else {
+        if (lastWinner === null) {
+          selected = hands[0].find(t=>t.a===6&&t.b===6);
+          log('You have the 6-6 — click Play Selected or click the board');
+        } else {
+          log('You won last hand — play any tile to open');
+        }
+        render();
+      }
+    }
+
+    function newGame() {
+      scores = {A:0, B:0};
+      round = 1;
+      lastWinner = null;
+      $('history').innerHTML = '';
+      $('log').innerHTML = '';
+      log('New game started. Target 500.');
+      newRound();
+    }
+
+    $('newGame').onclick = newGame;
+    $('newRound').onclick = newRound;
+    $('reset').onclick = () => { log('Hand reset.'); newRound(); };
+    $('playSelected').onclick = playerPlay;
+    $('pass').onclick = () => { if (current===0 && !over && !hands[0].some(canPlay)) { log('You passed'); next(); } };
+
+    newGame();
+  </script>
+</body>
+</html>
